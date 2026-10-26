@@ -1,0 +1,54 @@
+# Local data and generated experimental results
+/data/
+/outputs/
+*.npz
+*.ply
+*.pcd
+*.bag
+*.db3
+*.mcap
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.heic
+*.mp4
+*.mov
+
+# Python and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+.conda/
+
+# Editors and operating system
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Credentials and machine-specific configuration
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+credentials.json
+secrets.json
+*.local.json
+
+# Temporary files
+*.tmp
+*.bak
+*.log

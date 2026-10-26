@@ -1,0 +1,6 @@
+name: mower-lidar
+channels:
+  - defaults
+dependencies:
+  - pip
+  - python=3.11

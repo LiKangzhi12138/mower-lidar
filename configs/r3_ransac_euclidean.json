@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "preprocess": {"zero_policy": "exclude"},
+  "coordinates": {"mode": "raw_sensor", "sensor_frame": "livox_frame (metadata; transform unverified)", "coordinate_unit": null, "unit_confirmed": false, "mount_height": null, "mount_pitch_degrees": null},
+  "ground": {"method": "ransac", "plane_policy": "retain", "params": {"distance_threshold": 0.05, "ransac_n": 3, "num_iterations": 1000, "probability": 0.999, "random_seed": 20261015}},
+  "clustering": {"method": "euclidean", "params": {"radius": 0.35, "min_points": 12, "max_points": null}},
+  "visualization": {"preview_png": true}
+}

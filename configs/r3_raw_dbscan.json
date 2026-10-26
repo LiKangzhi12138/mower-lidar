@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "preprocess": {"zero_policy": "exclude"},
+  "coordinates": {"mode": "raw_sensor", "sensor_frame": "livox_frame (metadata; transform unverified)", "coordinate_unit": null, "unit_confirmed": false, "mount_height": null, "mount_pitch_degrees": null},
+  "ground": {"method": "none"},
+  "clustering": {"method": "dbscan", "params": {"eps": 0.35, "min_points": 12}},
+  "visualization": {"preview_png": true}
+}

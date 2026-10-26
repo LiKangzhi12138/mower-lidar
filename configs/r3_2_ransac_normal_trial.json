@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "preprocess": {"zero_policy": "exclude"},
+  "coordinates": {
+    "mode": "experimental_mount",
+    "sensor_frame": "livox_frame",
+    "analysis_frame": "experimental_level_x_forward_y_left_z_up",
+    "coordinate_unit": "meter_hypothesis_not_export_verified",
+    "unit_confirmed": false,
+    "mount_height": 0.415,
+    "mount_pitch_degrees": 5.0,
+    "pitch_axis_sensor": [0, 1, 0],
+    "vertical_axis_analysis": [0, 0, 1]
+  },
+  "ground": {
+    "method": "ransac_normal",
+    "params": {
+      "distance_threshold": 0.12,
+      "ransac_n": 3,
+      "num_iterations": 1000,
+      "probability": 0.999,
+      "random_seed": 20261023,
+      "vertical_axis_analysis": [0, 0, 1],
+      "max_normal_angle_degrees": 15.0,
+      "max_abs_ground_intercept": 0.2,
+      "max_plane_trials": 6
+    }
+  },
+  "clustering": {"method": "dbscan", "params": {"eps": 0.35, "min_points": 12}},
+  "visualization": {"preview_png": false}
+}

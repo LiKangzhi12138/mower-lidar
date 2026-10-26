@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "preprocess": {"zero_policy": "exclude"},
+  "coordinates": {
+    "mode": "experimental_mount",
+    "sensor_frame": "livox_frame",
+    "analysis_frame": "experimental_level_x_forward_y_left_z_up",
+    "coordinate_unit": "meter_hypothesis_not_export_verified",
+    "unit_confirmed": false,
+    "mount_height": 0.415,
+    "mount_pitch_degrees": 5.0,
+    "pitch_axis_sensor": [0, 1, 0],
+    "vertical_axis_analysis": [0, 0, 1]
+  },
+  "ground": {
+    "method": "patchwork",
+    "params": {
+      "assume_z_up_experimental": true,
+      "sensor_height": 0.415,
+      "min_range": 0.1,
+      "max_range": 80.0,
+      "enable_RNR": false,
+      "enable_RVPF": true,
+      "enable_TGR": true
+    }
+  },
+  "clustering": {"method": "dbscan", "params": {"eps": 0.35, "min_points": 12}},
+  "visualization": {"preview_png": false}
+}
