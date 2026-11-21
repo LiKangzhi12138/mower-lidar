@@ -23,9 +23,9 @@ flowchart TD
     D --> E[非地面点与源行索引]
     E --> F[cluster_dbscan: 候选标签与噪声]
     F --> G[describe_candidate: 中心/包围盒/最近三维距离]
-    G --> H[result.json 与 PLY]
-    H --> I[radar_view: XY距离/方位与雷达图]
-    I --> J[obstacles.json / obstacles_colored.ply / radar_view.png]
+    G --> H[水平距离与方位]
+    H --> I[Core 与 Full 共同输出 obstacles.json]
+    H --> J[Full 调试产物 result.json / PLY / 雷达图]
 ```
 
 ## 项目结构
@@ -38,12 +38,17 @@ mower-lidar/
 │  ├─ radar_view.py                 # 二维方位字段与静态雷达图
 │  ├─ npz_to_ply.py                 # 共享 NPZ 读取器；main 为历史转换示例
 │  ├─ prepare_cloud.py              # R1 清理规则及独立清理工具
+│  ├─ convert_field_rosbag.py       # 已验收现场 PointCloud2 DB3 → NPZ
+│  ├─ check_release_smoke.py        # 用合成点云验证 Core / Full 入口
+│  ├─ benchmark_perception.py      # R3.8 本地性能基准
 │  ├─ extract_obstacle_candidates.py# RANSAC、DBSCAN、候选几何、PLY 共用函数
 │  ├─ patchwork_ground.py           # 历史 Patchwork++ 对照实现
 │  ├─ check_*.py                    # 离线结果/几何自检
 │  └─ run_r3_*.py 等                # 历史批量实验和辅助脚本
-├─ configs/                         # JSON 参数；主流程采用 r3_2_ransac_normal_trial.json
-├─ docs/                            # 接口、算法、运行说明和 R0～R3.4 历史报告
+├─ configs/
+│  ├─ field_66cm_7p5deg_ransac_dbscan.json # 现场配置，通过 --config 显式选择
+│  └─ r3_2_ransac_normal_trial.json        # 历史配置，兼容默认值
+├─ docs/                            # 接口、参数调优、运行说明和验证报告
 ├─ data/                            # 本地数据目录，不进入 Git
 ├─ outputs/                         # 本地生成结果，不进入 Git
 ├─ environment.yml                  # Python 3.11 Conda 基础环境声明
@@ -54,24 +59,70 @@ mower-lidar/
 
 ## 环境与快速开始（Windows PowerShell）
 
-现有测试环境：**Python 3.11.17、NumPy 1.26.4、Open3D 0.19.0、SciPy 1.17.1、scikit-learn 1.9.1、Matplotlib 3.11.2、pypatchworkpp 1.4.1、Pillow 12.3.0**。这是实际环境版本记录，不代表其他版本已测试。离线运行无需 GPU；未进行 Jetson 或 ROS 2 验证。已有环境可 `conda activate mower-lidar`。需要自行配置新环境时，可参考以下命令；本轮**没有执行环境创建或安装**，完整 pip 快照可能含有主流程不需要的历史工具包：
+已验证环境为 Windows Python 3.11.17、NumPy 1.26.4、Open3D 0.19.0、SciPy 1.17.1、Matplotlib 3.11.2、pypatchworkpp 1.4.1 和 Pillow 12.3.0。离线检测在 CPU 上运行。Open3D 提供正式 DBSCAN 实现，pypatchworkpp 仍是现有检测模块的导入依赖。`requirements.txt` 固定本地验证环境的 pip 版本，也包含历史工具的依赖。新建环境需由使用者执行下列命令。已有环境直接激活即可。
 
 ```powershell
+git clone https://github.com/LiKangzhi12138/mower-lidar.git
+Set-Location mower-lidar
 conda env create -f environment.yml
 conda activate mower-lidar
 python -m pip install -r requirements.txt
+python -m pip check
 ```
+
+从仓库根目录运行。把自己的 NPZ 放到 `data/field/message_000092.npz`，或把 `$npz` 设为实际文件路径。以下两条现场命令显式加载 **0.66 m / +7.5°** 配置。每次使用新的或空输出目录。
 
 ```powershell
-cd E:\workspace\mower-lidar
 conda activate mower-lidar
-$npz = 'E:\workspace\mower-data\data\newdata\sample_000142\lidar\cloud_01.npz'
-python -B scripts/run_perception.py --input $npz --output-dir outputs/quickstart_sample_000142
+$npz = 'data/field/message_000092.npz'
+$cfg = 'configs/field_66cm_7p5deg_ransac_dbscan.json'
+python -B scripts/run_perception.py --input $npz --config $cfg --mode core --output-dir outputs/field_core
+python -B scripts/run_perception.py --input $npz --config $cfg --mode full --output-dir outputs/field_full
 ```
 
-这是已用 `sample_000142` 实际验证的命令。输出目录需为空或尚不存在；再次运行请选新的目录，防止覆盖已有实验。`--config` 可指定兼容主路线的 JSON，省略时使用 [固定 R3.2 主配置](configs/r3_2_ransac_normal_trial.json)。GitHub 用户需自行提供符合下述协议的 NPZ；示例中的 `E:\workspace\mower-data` **仅是本机测试数据位置**，程序不依赖这个路径。命令必须从项目根目录运行。
+省略 `--config` 会加载 **0.415 m / +5°** 的历史 R3.2 配置。现场使用时应显式传入与硬件相符的配置。[现场配置](configs/field_66cm_7p5deg_ransac_dbscan.json) · [历史配置](configs/r3_2_ransac_normal_trial.json)
 
-结果主要在 `outputs/quickstart_sample_000142/`：`obstacles.json`、`obstacles_colored.ply`、`radar_view.png`、`ground.ply`、`nonground.ply`；`detection/result.json`、`detection/indices_and_labels.npz` 与逐簇 PLY 保存原检测细节。`result.json` 保持 R3 原字段语义，`obstacles.json` 在候选条目上增加 XY 距离/方位。详见 [输入输出协议](docs/INPUT_OUTPUT_SPEC.md) 和 [运行及测试](docs/RUNNING_AND_TESTING.md)。
+## 输入与接口
+
+NPZ 推荐包含 `points`，形状 N×4，类型 float32，四列依次表示原始雷达坐标的 x、y、z 和 intensity。另存 `fields=np.array(["x", "y", "z", "intensity"])`。保留原始点序与单位，姿态变换由检测器按配置执行。ROS 2 DB3 转换器可读取 R3.9 已验收的三个现场包和对应 PointCloud2 CDR 布局，分别保存点和时间戳。它对未知布局报错，参数可用 `python -B scripts/convert_field_rosbag.py --help` 查阅。[转换说明](docs/R3_FIELD_MERGING_DIAGNOSTIC.md)
+
+`obstacles.json` 顶层的 `candidate_count`、`unclustered_point_count` 和 `candidates` 分别记录簇数、未聚类点数和候选列表。`coordinate_parameters`、`ground_parameters`、`clustering_parameters` 记录生效配置。逐簇常用字段如下。
+
+| 实际字段 | 含义 |
+| --- | --- |
+| `id` / `obstacle_id`、`point_count`、`input_indices` | 当前帧簇标签、点数、原始 NPZ 行号 |
+| `center_xyz`、`bbox_min_xyz`、`bbox_max_xyz`、`bbox_extent_xyz` | 分析坐标中的中心、轴对齐包围盒及三轴尺寸 |
+| `nearest_sensor_xyz`、`nearest_sensor_distance` | 原始雷达原点参考的最近点与三维距离 |
+| `range_xy`、`nearest_range_xy`、`azimuth_deg` | 分析坐标中的中心水平距离、最近水平距离和中心方位角 |
+
+方位角以实验分析坐标 +X 为 0°，+Y 为 +90°。该坐标使用 +Y 轴姿态旋转和 +Z 高度平移。现场雷达轴向及高度测量参考点仍需外参核实，输出的 `coordinate_unit_confirmed` 仍为 `false`。[完整输入输出协议与 JSON 示例](docs/INPUT_OUTPUT_SPEC.md)
+
+## full 与 core 模式（R3.8）
+
+省略 `--mode` 默认执行 `full`。Core 和 Full 使用相同的检测及候选几何。Core 每帧只写一个 `obstacles.json`。Full 另外输出 `obstacles_colored.ply`、`radar_view.png` 及非空地面/非地面 PLY，`detection/` 记录原始计算结果、索引和逐簇点云。
+
+`core` 的坐标、最近三维距离、包围盒、水平距离和方位角定义与 `full` 相同；未生成的 `point_cloud`、`source_result_json`、`radar_plot` 和 PNG/PLY 输出引用为 `null`。地面诊断沿用检测器已有字段，不引入 `ground_status`。独立 `radar_view.py --result-json ...` 接口保持可用。性能口径和真实测量见 [R3.8 性能报告](docs/R3_PERFORMANCE_BENCHMARK.md)。
+
+## 检测效果不好时如何调整参数
+
+| 现场参数路径 | 基准 | 首要影响 |
+| --- | ---: | --- |
+| `clustering.params.eps` | 0.35 | 邻域半径，影响合并、拆分与噪声 |
+| `clustering.params.min_points` | 12 | 核心点邻域点数，影响稀疏目标与连接 |
+| `coordinates.mount_height` | 0.66 m 安装假设 | 改变地面竖直截距 |
+| `coordinates.mount_pitch_degrees` | +7.5° | 改变地面法向与分析坐标 |
+
+先检查地面过滤，再根据同一帧的连接与噪声情况调聚类。每次复制配置并改一项，通过 `--config` 显式加载。参数单位、调参流程、十类故障处置与实操命令见 [Mid-360 障碍检测参数配置与效果调优指南](docs/PARAMETER_TUNING_GUIDE.md)。
+
+## 测试
+
+克隆仓库后，即使没有现场数据也能运行以下测试。它生成合成 NPZ，通过正式 CLI 核对两种模式的几何和产物。
+
+```powershell
+python -B scripts/check_release_smoke.py --output-dir outputs/release_smoke
+```
+
+已有本地录包和历史产物时，可按需运行现场回归、R3.4 雷达图检查及性能工具。公开克隆不含历史点云和运行产物。[运行及测试](docs/RUNNING_AND_TESTING.md)
 
 ## 可视化与方位约定
 
@@ -79,8 +130,14 @@ python -B scripts/run_perception.py --input $npz --output-dir outputs/quickstart
 
 ## 进度与限制
 
+R3.8 验证 Core 与 Full 几何一致，R3.9 验证现场 DB3 转换和聚类诊断，R3.10 完成 111 条现场消息的 Core 通过性与几何回归。[现场回归报告](docs/R3_FIELD_CONFIG_VALIDATION.md)
+
 R0 审查数据，R1 清理输入，R2/R2.5 验证平面与聚类候选，R3 建立离线检测器，R3.2 用 142 对比地面方法，R3.3 在 143～149 多场景运行，R3.4 增加二维方位与雷达图。现选择法向约束 RANSAC + DBSCAN 作为**开发主路线**。详情见 [项目状态](docs/PROJECT_STATUS.md)及各阶段原始报告。
 
 目前主要完成离线运行和有限人工观察：尚未正式核实 NPZ 保存链是否完整保持米制；0.415 m 是否从雷达内部原点测量、雷达 +X 与真实车头关系和 143～149 安装一致性仍待确认。未获得充分地面/障碍真值，不能给出准确率、召回率、实际距离与方位精度。没有 ROS 2 在线节点、Jetson 部署或端到端实时延迟测试；离线算法计时不能代表实机实时性。完整限制见 [算法文档](docs/ALGORITHM.md)。
 
 本仓库尚未附开源许可证；使用与再分发条件需由项目所有者决定。
+
+## Jetson / ROS 2 接入
+
+部署人员需要接入实际点云，记录和对齐消息时间、点序、坐标系和外参，选择现场验证过的配置，并按 `obstacles.json` 的坐标与单位语义适配接口。先用录包回放对比同一帧的预处理、地面候选和聚类，再测在线吞吐量、延迟和丢帧。Jetson 平台的 Python wheel、ROS 2 适配和实际实时性能需单独验证。[部署与调优说明](docs/PARAMETER_TUNING_GUIDE.md#10-现场部署)

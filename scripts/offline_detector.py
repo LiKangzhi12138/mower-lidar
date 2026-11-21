@@ -167,7 +167,8 @@ def _software_versions():
     return versions
 
 
-def run(input_path: Path, config_path: Path, output_dir: Path, run_name: str):
+def run(input_path: Path, config_path: Path, output_dir: Path, run_name: str, *,
+        export_artifacts=True, context=None):
     if not input_path.is_file():
         raise FileNotFoundError(input_path)
     if not config_path.is_file():
@@ -298,38 +299,42 @@ def run(input_path: Path, config_path: Path, output_dir: Path, run_name: str):
 
     t = time.perf_counter()
     target = output_dir / run_name
-    target.mkdir(parents=True, exist_ok=True)
+    if export_artifacts:
+        target.mkdir(parents=True, exist_ok=True)
     candidates = []
-    colors = _solid(len(trial), [0.45, 0.45, 0.45])
+    colors = _solid(len(trial), [0.45, 0.45, 0.45]) if export_artifacts else None
     for cluster_id in np.unique(labels[labels >= 0]):
         local = np.flatnonzero(labels == cluster_id)
         rows = candidate_rows[local]
         summary = describe_candidate(xyz[rows], sensor[rows], source_indices[rows])
         filename = f"candidate_{int(cluster_id):03d}.ply"
-        color = candidate_color(int(cluster_id))
-        colors[local] = color
-        _write_ply(target / filename, xyz[rows], _solid(len(rows), color))
+        if export_artifacts:
+            color = candidate_color(int(cluster_id))
+            colors[local] = color
+            _write_ply(target / filename, xyz[rows], _solid(len(rows), color))
         candidates.append({
             "id": int(cluster_id), "classification": "experimental_obstacle_candidate",
             "point_count": len(rows), "point_cloud": filename,
             "input_indices": source_indices[rows].tolist(), **summary,
         })
-    _write_ply(target / "candidate_region.ply", trial, _solid(len(trial), [0.8, 0.8, 0.8]))
-    _write_ply(target / "clusters_colored.ply", trial, colors)
-    _write_ply(target / "plane_candidate.ply", xyz[plane], _solid(len(plane), [0.1, 0.3, 0.95]))
-    _write_ply(target / "removed_experimental.ply", xyz[removed], _solid(len(removed), [0.1, 0.85, 0.2]))
-    np.savez_compressed(
-        target / "indices_and_labels.npz",
-        clean_source_indices=source_indices,
-        candidate_source_indices=source_indices[candidate_rows],
-        removed_source_indices=source_indices[removed],
-        unclassified_source_indices=source_indices[unclassified],
-        plane_source_indices=source_indices[plane],
-        candidate_labels=labels,
-    )
-    if cfg.get("visualization", {}).get("preview_png", False) and len(trial):
-        write_preview(target / "clusters_preview.png", trial, colors, run_name,
-                      "colored: candidates, gray: unclustered candidate points")
+    # 调试产物可选；核心计算和两套坐标的数学定义保持一致。
+    if export_artifacts:
+        _write_ply(target / "candidate_region.ply", trial, _solid(len(trial), [0.8, 0.8, 0.8]))
+        _write_ply(target / "clusters_colored.ply", trial, colors)
+        _write_ply(target / "plane_candidate.ply", xyz[plane], _solid(len(plane), [0.1, 0.3, 0.95]))
+        _write_ply(target / "removed_experimental.ply", xyz[removed], _solid(len(removed), [0.1, 0.85, 0.2]))
+        np.savez_compressed(
+            target / "indices_and_labels.npz",
+            clean_source_indices=source_indices,
+            candidate_source_indices=source_indices[candidate_rows],
+            removed_source_indices=source_indices[removed],
+            unclassified_source_indices=source_indices[unclassified],
+            plane_source_indices=source_indices[plane],
+            candidate_labels=labels,
+        )
+        if cfg.get("visualization", {}).get("preview_png", False) and len(trial):
+            write_preview(target / "clusters_preview.png", trial, colors, run_name,
+                          "colored: candidates, gray: unclustered candidate points")
     timings["output_seconds"] = time.perf_counter() - t
     timings["total_seconds"] = time.perf_counter() - started
 
@@ -355,7 +360,11 @@ def run(input_path: Path, config_path: Path, output_dir: Path, run_name: str):
         "distance_reference": "raw_sensor_origin",
         "distance_unit": cfg["coordinates"].get("coordinate_unit") if cfg["coordinates"].get("unit_confirmed", False) else "unconfirmed_coordinate_values",
     }
-    (target / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2, default=_jsonable), encoding="utf-8")
+    if export_artifacts:
+        (target / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2, default=_jsonable), encoding="utf-8")
+    if context is not None:
+        # 原始坐标用于三维雷达距离；分析坐标用于包围盒与二维方位，不能混用。
+        context.update(analysis_xyz=xyz, candidate_rows=candidate_rows, labels=labels)
     return result, target
 
 

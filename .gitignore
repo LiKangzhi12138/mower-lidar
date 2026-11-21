@@ -1,12 +1,17 @@
 # Local data and generated experimental results
 /data/
 /outputs/
+/mower-lidar-viewer/
 *.npz
 *.ply
 *.pcd
 *.bag
 *.db3
 *.mcap
+*.db3-*
+*.mcap.*
+**/metadata.yaml
+**/metadata.yml
 *.jpg
 *.jpeg
 *.tif
@@ -25,6 +30,8 @@ __pycache__/
 venv/
 env/
 .conda/
+.pixi/
+.cache/
 
 # Editors and operating system
 .vscode/
@@ -47,6 +54,8 @@ id_ed25519*
 credentials.json
 secrets.json
 *.local.json
+*.local.yaml
+*.local.yml
 
 # Temporary files
 *.tmp

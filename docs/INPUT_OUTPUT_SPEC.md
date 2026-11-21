@@ -1,5 +1,7 @@
 # 输入输出协议（R3.6 离线主入口）
 
+R3.8 增加可选 `core` 模式，默认 `full` 保持旧协议。core 仍生成同类 `obstacles.json`，所有候选数值字段和坐标/单位声明不变；`point_cloud`、`source_result_json`、`radar_plot`、`outputs.radar_view_png`、`outputs.obstacles_colored_ply` 为 `null`，明确表示未生成对应调试产物。core 另携带检测器原有的 `ground_note`、`plane_model_ax_by_cz_d`、`plane_candidate_point_count`、`removed_point_count`、`unclassified_point_count`、`rejected_plane_candidates`、`selected_plane_diagnostics`、`candidate_region_point_count`，未新增地面有效性状态定义。
+
 ## 输入 NPZ
 
 实测 `sample_000142/lidar/cloud_01.npz` 有 `points: (19200,4) float32` 与 `fields: (4,) <U9`，字段名依次 `x,y,z,intensity`。代码通过 `read_cloud_data()` 依**字段名**取列，不依赖示例的物理列顺序；读取器还兼容独立 x/y/z 数组及结构化 XYZ 字段，但主数据实际采用 `points`+`fields`。`intensity` 保留用于读取/过滤，主流程没有按强度分类。该 NPZ 无逐点时间戳。元数据称 `livox_frame`，但 NPZ 自身不保存可信完整外参；如需按示例配置解释数据，必须另行核实坐标轴、单位和安装状态。

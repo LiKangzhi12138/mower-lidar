@@ -202,40 +202,61 @@ def export_result(result_path, output_dir, *, max_radius=None, ring_step=None,
     if (not np.array_equal(source_indices[rows], candidate_source) or
             len(rows) != len(labels) or len(rows) != result["candidate_region_point_count"]):
         raise ValueError("Candidate indices/labels inconsistent")
+    return _export_context(result, result_path, output_dir, analysis_xyz, rows, labels,
+                           stats, fields, frame, source_indices=source_indices, max_radius=max_radius, ring_step=ring_step,
+                           show_noise=show_noise, show_boxes=show_boxes)
+
+
+def export_memory(result, context, output_dir):
+    """核心模式直接使用同次计算的坐标和标签，不重读 NPZ/JSON/PLY。"""
+    return _export_context(result, None, Path(output_dir), context["analysis_xyz"],
+                           context["candidate_rows"], context["labels"],
+                           result["preprocess_stats"], result["source_fields"], result["analysis_frame"],
+                           render=False)
+
+
+def _export_context(result, result_path, output_dir, analysis_xyz, rows, labels,
+                    stats, fields, frame, *, source_indices=None, render=True, max_radius=None,
+                    ring_step=None, show_noise=True, show_boxes=False):
+    source = Path(result["input_file"])
     candidates = []
     for original in result["candidates"]:
         cid = int(original["id"])
         local = rows[labels == cid]
         xyz = analysis_xyz[local]
-        if (not len(xyz) or not np.array_equal(source_indices[local], original["input_indices"]) or
+        if (not len(xyz) or (source_indices is not None and not np.array_equal(source_indices[local], original["input_indices"])) or
                 not np.allclose(xyz.mean(axis=0), original["center_xyz"])):
             raise ValueError(f"Candidate {cid} mismatches source indices or center")
         enriched = dict(original)
         enriched.update(xy_polar(original["center_xyz"], xyz, frame))
         enriched["obstacle_id"] = cid
+        if not render:
+            enriched["point_cloud"] = None  # 核心模式不宣称存在未导出的逐簇文件。
         candidates.append(enriched)
     if len(candidates) != result["candidate_count"]:
         raise ValueError("Candidate count mismatch")
-    source_ply = result_path.parent / "obstacles_colored.ply"
-    cloud = o3d.io.read_point_cloud(str(source_ply))
-    if (len(cloud.points) != len(rows) or len(cloud.colors) != len(rows) or
-            not np.allclose(np.asarray(cloud.points), analysis_xyz[rows], atol=1e-5)):
-        raise ValueError("R3 colored PLY differs from indexed analysis coordinates")
-    output_dir.mkdir(parents=True, exist_ok=True)
+    plot = None
     target_ply = output_dir / "obstacles_colored.ply"
-    if source_ply.resolve() != target_ply.resolve():
-        shutil.copyfile(source_ply, target_ply)
-    plot = draw_radar(output_dir / "radar_view.png", candidates, analysis_xyz, rows, labels,
-                      sample_name=source.parent.parent.name,
-                      frame=frame, unit_note="m hypothesis / NPZ unit unverified",
-                      calibration_note="+X vehicle-forward and height origin unverified",
-                      max_radius=max_radius, ring_step=ring_step,
-                      show_noise=show_noise, show_boxes=show_boxes)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if render:
+        source_ply = result_path.parent / "obstacles_colored.ply"
+        cloud = o3d.io.read_point_cloud(str(source_ply))
+        if (len(cloud.points) != len(rows) or len(cloud.colors) != len(rows) or
+                not np.allclose(np.asarray(cloud.points), analysis_xyz[rows], atol=1e-5)):
+            raise ValueError("R3 colored PLY differs from indexed analysis coordinates")
+        if source_ply.resolve() != target_ply.resolve():
+            shutil.copyfile(source_ply, target_ply)
+        plot = draw_radar(output_dir / "radar_view.png", candidates, analysis_xyz, rows, labels,
+                          sample_name=source.parent.parent.name,
+                          frame=frame, unit_note="m hypothesis / NPZ unit unverified",
+                          calibration_note="+X vehicle-forward and height origin unverified",
+                          max_radius=max_radius, ring_step=ring_step,
+                          show_noise=show_noise, show_boxes=show_boxes)
     document = {
         "schema_version": 1,
         "result_type": "experimental_obstacle_candidates_with_xy_bearing",
         "sample_name": source.parent.parent.name,
-        "source_result_json": str(result_path.resolve()),
+        "source_result_json": str(result_path.resolve()) if result_path is not None else None,
         "input_file": str(source.resolve()), "input_sha256": result["input_sha256"],
         "source_fields": fields, "preprocess_stats": stats,
         "ground_method": result["ground_method"],
@@ -258,9 +279,15 @@ def export_result(result_path, output_dir, *, max_radius=None, ring_step=None,
         "candidates": candidates,
         "radar_plot": plot,
         "outputs": {"obstacles_json": str((output_dir / "obstacles.json").resolve()),
-                    "radar_view_png": str((output_dir / "radar_view.png").resolve()),
-                    "obstacles_colored_ply": str(target_ply.resolve())},
+                    "radar_view_png": str((output_dir / "radar_view.png").resolve()) if render else None,
+                    "obstacles_colored_ply": str(target_ply.resolve()) if render else None},
     }
+    if not render:
+        # 复用已有诊断字段，不新增 ground_status 等未定义状态协议。
+        for key in ("ground_note", "plane_model_ax_by_cz_d", "plane_candidate_point_count",
+                    "removed_point_count", "unclassified_point_count", "rejected_plane_candidates",
+                    "selected_plane_diagnostics", "candidate_region_point_count"):
+            document[key] = result[key]
     (output_dir / "obstacles.json").write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
     return document
 
